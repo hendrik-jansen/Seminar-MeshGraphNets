@@ -35,7 +35,7 @@ class ProcessingLayer(MessagePassing):
             self.node_mlp[i].reset_parameters()
             self.edge_mlp[i].reset_parameters()
 
-    def forward(self, x, edge_idx, edge_attr, size=None):
+    def forward(self, x, edge_index, edge_attr, size=None):
         """
         Propagate messages to update embeddings.
 
@@ -46,7 +46,7 @@ class ProcessingLayer(MessagePassing):
 
         """
         # edge update
-        out, updated_edges = self.propagate(edge_idx, x=x, edge_attr=edge_attr, size=size)
+        out, updated_edges = self.propagate(edge_index=edge_index, x=x, edge_attr=edge_attr, size=size)
 
         # residual and node update
         updated_nodes = x + self.node_mlp(torch.cat([x, out], dim=1))
@@ -62,14 +62,14 @@ class ProcessingLayer(MessagePassing):
         # edge update with residual
         return self.edge_mlp(updated_edges) + edge_attr
 
-    def aggregate(self, updated_edges, edge_idx, dim_size=None):
+    def aggregate(self, updated_edges, edge_index, dim_size=None):
         # out = torch_scatter.scatter(updated_edges, edge_idx[0,:], dim=0, reduce="sum")
         # scatter add without dependency
         src = updated_edges
         out_size = list(src.size())
-        out_size[0] = edge_idx.max().item()+1
+        out_size[0] = edge_index.max().item()+1
         out = torch.zeros(out_size, dtype=src.dtype, device=src.device)
-        out.index_add_(dim=0, index=edge_idx[0:], source=src)
+        out.index_add_(dim=0, index=edge_index[0, :], source=src)
         return out, updated_edges
 
 
@@ -87,14 +87,14 @@ class MeshGraphNet(nn.Module):
         self.node_encoder = nn.Sequential(
                 nn.Linear(input_dim_node, self.hidden_dim),
                 nn.ReLU(),
-                nn.Linear(self.hidden_dim, output_dim),
+                nn.Linear(self.hidden_dim, self.hidden_dim),
                 nn.LayerNorm(self.hidden_dim),
             )
 
         self.edge_encoder = nn.Sequential(
                 nn.Linear(input_dim_edge, self.hidden_dim),
                 nn.ReLU(),
-                nn.Linear(self.hidden_dim, output_dim),
+                nn.Linear(self.hidden_dim, self.hidden_dim),
                 nn.LayerNorm(self.hidden_dim),
             )
 
@@ -129,7 +129,7 @@ class MeshGraphNet(nn.Module):
 
     def loss(self, pred, inputs, mean_y, std_y):
         # normalize labels
-        labels = (inputs-mean_y)/std_y
+        labels = (inputs.y-mean_y)/std_y
 
         # create mask for nodes of interest
         loss_mask = torch.logical_or((torch.argmax(inputs.x[:,2:],dim=1)==NodeType.NORMAL),
@@ -138,7 +138,7 @@ class MeshGraphNet(nn.Module):
         # calculate total error 
         loss = torch.sum((labels-pred)**2, axis=1)
         # mask and mean
-        loss = torch.mean(loss[loss_mask])
+        return torch.mean(loss[loss_mask])
 
 
         

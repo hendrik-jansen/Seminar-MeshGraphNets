@@ -1,7 +1,8 @@
 import torch
+import matplotlib.pyplot as plt
 from torch_geometric.loader import DataLoader
 
-from tqdm import tqdm
+from tqdm import trange
 
 from model import MeshGraphNet
 from load_preprocessed import load_dataset
@@ -14,10 +15,10 @@ TEST_SIZE = 2
 DEVICE = "cpu"
 
 ARGS = {
-    "num_layers": 5,
-    "batch_size": 8,
+    "num_layers": 10,
+    "batch_size": 16,
     "hidden_dim": 10,
-    "epochs": 10,
+    "epochs": 100,
     "lr": 1e-3,
     "weight_decay": 5e-4,
 }
@@ -38,8 +39,11 @@ def train():
     trainable_params = filter(lambda p: p.requires_grad, model.parameters())
     opt = torch.optim.Adam(trainable_params, lr=ARGS["lr"], weight_decay=ARGS["weight_decay"])
 
-    for epoch in tqdm(range(ARGS["epochs"])):
+    epoch_losses = []
+
+    for epoch in trange(ARGS["epochs"]):
         model.train()
+        batch_losses = []
         for batch in dataloader:
             batch = batch.to(DEVICE)
             opt.zero_grad()
@@ -47,7 +51,18 @@ def train():
             loss = model.loss(pred, batch, mean_y, std_y)
             loss.backward()
             opt.step()
-            print(loss.item())
+            batch_losses.append(loss.item())
+        
+        # Calculate the average loss for the epoch
+        avg_loss = sum(batch_losses) / len(batch_losses)
+        epoch_losses.append(avg_loss)
+
+    # Plot the average losses
+    plt.plot(range(1, ARGS["epochs"] + 1), epoch_losses, marker='o')
+    plt.xlabel('Epoch')
+    plt.ylabel('Average Loss')
+    plt.title('Training Loss per Epoch')
+    plt.show()
 
 
 
