@@ -5,6 +5,7 @@ from torch_geometric.loader import DataLoader
 from tqdm import trange
 
 from model import MeshGraphNet
+from alt_passing import AltMeshGraphNet
 from load_preprocessed import load_dataset
 from normalization import get_stats
 
@@ -18,7 +19,7 @@ ARGS = {
     "num_layers": 10,
     "batch_size": 16,
     "hidden_dim": 10,
-    "epochs": 100,
+    "epochs": 10,
     "lr": 1e-3,
     "weight_decay": 5e-4,
 }
@@ -55,6 +56,7 @@ def train():
         
         # Calculate the average loss for the epoch
         avg_loss = sum(batch_losses) / len(batch_losses)
+        print(avg_loss)
         epoch_losses.append(avg_loss)
 
     # Plot the average losses

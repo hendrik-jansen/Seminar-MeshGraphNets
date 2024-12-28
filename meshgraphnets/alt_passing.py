@@ -2,6 +2,7 @@ import torch
 from torch import nn
 # import torch_scatter
 from torch_geometric.nn import MessagePassing
+from torch_geometric.nn.models import GCN, GAT
 from constants import NodeType
 
 
@@ -13,74 +14,14 @@ hyperparams = {
 }
 
 
-class ProcessingLayer(MessagePassing):
-    def __init__(self, node_dim, edge_dim):
-        super().__init__()
-        self.node_mlp = nn.Sequential(
-                nn.Linear(2*node_dim, node_dim),
-                nn.ReLU(),
-                nn.Linear(node_dim, node_dim),
-                nn.LayerNorm(node_dim),
-            )
-        self.edge_mlp = nn.Sequential(
-                nn.Linear(2*node_dim+edge_dim, edge_dim),
-                nn.ReLU(),
-                nn.Linear(edge_dim, edge_dim),
-                nn.LayerNorm(edge_dim),
-            )
-
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        for i in [0,2]:
-            self.node_mlp[i].reset_parameters()
-            self.edge_mlp[i].reset_parameters()
-
-    def forward(self, x, edge_index, edge_attr, size=None):
-        """
-        Propagate messages to update embeddings.
-
-        Args:
-        x [n_nodes, node_dim]: node embeddings
-        edge_index [2, n_edges]
-        edge_attr [E, edge_dim]
-
-        """
-        # edge update
-        out, updated_edges = self.propagate(edge_index=edge_index, x=x, edge_attr=edge_attr, size=size)
-
-        # residual and node update
-        updated_nodes = x + self.node_mlp(torch.cat([x, out], dim=1))
-        return updated_nodes, updated_edges
-    
-    def message(self, x_i, x_j, edge_attr):
-        """
-        x_i [E, node_dim]: source node embedding 
-        x_j [E, node_dim]: target node embedding 
-        edge_attr [E, edge_dim]
-        """
-        updated_edges = torch.cat([x_i, x_j, edge_attr], dim=1)
-        # edge update with residual
-        return self.edge_mlp(updated_edges) + edge_attr
-
-    def aggregate(self, updated_edges, edge_index, dim_size=None):
-        # out = torch_scatter.scatter(updated_edges, edge_index[0,:], dim=0, reduce="sum")
-        # scatter add without dependency
-        src = updated_edges
-        out_size = list(src.size())
-        out_size[0] = edge_index.max().item()+1
-        out = torch.zeros(out_size, dtype=src.dtype, device=src.device)
-        out.index_add_(dim=0, index=edge_index[0, :], source=src)
-        return out, updated_edges
-
-
-class MeshGraphNet(nn.Module):
+class AltMeshGraphNet(nn.Module):
     def __init__(
             self,
             input_dim_node,
             input_dim_edge,
             output_dim,
             args,
+            agg_scheme="GCN",
         ):
         super().__init__()
         self.num_layers = args["num_layers"]
@@ -101,7 +42,13 @@ class MeshGraphNet(nn.Module):
 
         self.processor_blocks = []
         for _ in range(self.num_layers):
-            self.processor_blocks.append(ProcessingLayer(self.hidden_dim, self.hidden_dim))
+            if agg_scheme == "GCN":
+                layer = GCN(in_channels=self.hidden_dim, hidden_channels=self.hidden_dim, num_layers=1, out_channels=self.hidden_dim)
+            elif agg_scheme == "GAT":
+                layer = GAT(in_channels=self.hidden_dim, hidden_channels=self.hidden_dim, num_layers=1, out_channels=self.hidden_dim)
+            else:
+                raise NotImplementedError
+            self.processor_blocks.append(layer)
 
         self.decoder = nn.Sequential(
                 nn.Linear(self.hidden_dim, self.hidden_dim),
@@ -123,7 +70,7 @@ class MeshGraphNet(nn.Module):
 
         # update embeddings using processor layers
         for layer in self.processor_blocks:
-            x, edge_attr = layer(x, edge_index, edge_attr)
+            x = layer(x=x, edge_index=edge_index, edge_attr=edge_attr)
 
         # decode node embeddings
         return self.decoder(x)
