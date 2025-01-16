@@ -10,7 +10,7 @@ Graph neural networks can learn the underlying dynamics in a domain agnostic way
 Conventional partial differential equation solvers iteratively compute the system’s state but scale quickly in computational cost with mesh size and resolution.
 
 ### II.B. Graph Neural Networks
-GNNs can learn local interactions by learning node and edge embeddings and propagating this signal along edges. 
+GNNs can learn local interactions by learning node (and potentially edge-) embeddings and propagating this signal along edges. 
 
 ### II.C. Adaptive Remeshing
 Depending on local complexity, different regions of the mesh require different resolutions to balance accuracy and computational cost.
@@ -47,10 +47,12 @@ The model operates on relative coordinates for robustness.
 
 ## IV. Model Architecture
 The chosen architecture is very similar to unnormalized graph convolution, with the addition of edge embeddings.
-First both nodes and edges are embedded, then in a number of processing steps the embeddings are updated according to adjacency.
-Finally the node embeddings are decoded.
+First nodes are embedded, then in a number of processing steps the embeddings are updated according to adjacency.
+At each step an edge embedding is obtained via linear layer from the adjacent node embeddings concatenated with the edge attributes (relative position + norm).
+Then the node embeddings are updated via linear layer of previous node embedding concatenated with the edge embeddings.
+Finally the node embeddings are decoded for the quantity of interest (f.e. pressure).
 
 
 ## V. Results
-MeshGraphNets deliver accurate long rollouts at speeds one to two orders of magnitude faster than the solvers. They outperform particle-based and grid-based baselines, with smaller errors in challenging regimes. They also scale and generalize well at inference, enabling simulations larger than or fundamentally different from any seen in training.
+MeshGraphNets deliver accurate long rollouts at speeds one to two orders of magnitude faster than the solvers. They outperform particle-based and grid-based baselines, with smaller errors in challenging regimes. They also scale and generalize well at inference, enabling simulations larger than or fundamentally different from anything seen in training.
 # TODO include tables and ablation
