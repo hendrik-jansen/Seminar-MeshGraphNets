@@ -8,9 +8,16 @@ Graph neural networks can learn the underlying dynamics in a domain agnostic way
 
 ### II.A. Traditional Simulation Methods
 Conventional partial differential equation solvers iteratively compute the system’s state but scale quickly in computational cost with mesh size and resolution.
+They are however fairly accurate, interpretable and stable even on long rollouts, as they directly encode the physical laws underlying the modeled interactions.
 
 ### II.B. Graph Neural Networks
-GNNs can learn local interactions by learning node (and potentially edge-) embeddings and propagating this signal along edges. 
+Graph-structured data presents challenges to common machine learning approaches. Naively processing an adjacency matrix with MLPs discards much of the structure, does not generalize to graphs of different sizes and quickly becomes computationally intractable.
+Instead the paradigm of message-passing has emerged, wherein each node is embedded individually and then updated by aggregation of embeddings from adjacent nodes.
+The concrete embedding and aggregation scheme is a degree of freedom and several architectures have been proposed, including siblings of non-geometric ML ideas, such as:
+- Graph Convolution: sum of neighbors, weighted by the root of the degree of both nodes.
+- Graph Attention: learnable weighted sum of adjacent embeddings.
+Since each GNN block processes a single hop, the receptive field at each node is simply the number of layers.
+Typically this is limited, forcing the network to learn local dynamics, which helps in generalization and prevents oversmoothing of predictions.
 
 ### II.C. Adaptive Remeshing
 Depending on local complexity, different regions of the mesh require different resolutions to balance accuracy and computational cost.
@@ -18,6 +25,7 @@ Adaptive meshing refines or coarsens regions based on different criteria express
 
 ## III. Domains & Datasets
 The authors evaluate on cloth simulation, structural deformation, and both compressible and incompressible fluid dynamics. The training data is generated from different simulators.
+The method capable of handling different domains with minimal, if any, adaptation. Many of the problems application even use the same hyperparameters.
 
 | Dataset        | System      | Solver | Mesh Type   | Meshing      | # Steps | ∆t/s |
 |----------------|-------------|--------|-------------|--------------|---------|-------|
@@ -39,20 +47,28 @@ Where each $g_i$ consists of:
 
 ### III.A. Preprocessing
 The mesh is augmented with world edges, nodes that are close in world space are connected to model collisions.
-In addition the model is remeshed as described in II.C
-The authors work with the TFrecord data format, we use Rayan Kanfar's (https://github.com/kanfarrs/) translation code to obtain torch compatible data.
+Originally two separate edge MLPs are learned for this purpose, however indicating whether an edge belongs to the mesh- or world graph as part of the edge features is equally as expressive and this step therefore ignored in our reimplementation.
+In addition the graph is remeshed as described in II.C
+The authors (deepmind) work with the tensorflow TFrecord data format, we use Rayan Kanfar's (https://github.com/kanfarrs/) translation code to obtain torch compatible data.
 Dataset statistics (mean + std dev) are collected from train data and applied to normalize at inference.
 The model operates on relative coordinates for robustness.
 
 
 ## IV. Model Architecture
 The chosen architecture is very similar to unnormalized graph convolution, with the addition of edge embeddings.
-First nodes are embedded, then in a number of processing steps the embeddings are updated according to adjacency.
-At each step an edge embedding is obtained via linear layer from the adjacent node embeddings concatenated with the edge attributes (relative position + norm).
-Then the node embeddings are updated via linear layer of previous node embedding concatenated with the edge embeddings.
-Finally the node embeddings are decoded for the quantity of interest (f.e. pressure).
+First nodes and edges are embedded, then in a number of processing steps the embeddings are updated according to adjacency.
+At each step the edge embeddings are updated via MLP of concatenated adjacent nodes + residual.
+Then the node embeddings are updated via MLP of previous node embedding concatenated with the edge embeddings + residual.
+Finally the node embeddings are decoded for the quantity of interest (f.e. velocity).
 
 
 ## V. Results
-MeshGraphNets deliver accurate long rollouts at speeds one to two orders of magnitude faster than the solvers. They outperform particle-based and grid-based baselines, with smaller errors in challenging regimes. They also scale and generalize well at inference, enabling simulations larger than or fundamentally different from anything seen in training.
+MeshGraphNets deliver accurate long rollouts at speeds up to two orders of magnitude faster than the solvers. They outperform particle-based and grid-based baselines, with smaller errors in challenging regimes. They also scale and generalize well at inference, enabling simulations larger than or fundamentally different from anything seen in training.
 # TODO include tables and ablation
+
+## VI. Tricks
+
+### VI.A Training Noise
+To improve rollout stability, noise can be injected during training, nudging the model towards self correcting behavior.
+As small predictions inevitably accumulate at inference, the authors report that a model used to noisy environments is much more robust to this.
+Empirically predictions stay plausible even after tens of thousands of rollout steps.
