@@ -6,7 +6,7 @@ from tqdm import trange
 
 from model import MeshGraphNet
 from alt_passing import AltMeshGraphNet
-from load_preprocessed import load_dataset
+from load_preprocessed import load_testset
 from normalization import get_stats
 
 
@@ -25,7 +25,7 @@ ARGS = {
 }
 
 def train():
-    dataset = load_dataset()
+    dataset = load_testset()
     dataloader = DataLoader(dataset[:TRAIN_SIZE])
     testloader = DataLoader(dataset[TRAIN_SIZE:TRAIN_SIZE+TEST_SIZE])
 
